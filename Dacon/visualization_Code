@@ -1,0 +1,908 @@
+---
+title: "JobMarket"
+author: "January"
+date: "1/16/2022"
+output: html_document
+---
+
+```{R message=FALSE, warning=FALSE, fig.showtext=TRUE}
+print('hi')
+```
+
+
+```{r}
+
+library(showtext)
+font_add(family = "NanumGothic", regular = "/Library/Fonts/NanumSquareRoundR.ttf") 
+
+library(data.table)
+library(tidyverse)
+library(ggridges)
+library(ggrepel)
+library(readxl)
+library(scales)
+library(patchwork)
+library(stringi)
+library(KoNLP)
+library(corrplot)
+
+showtext_auto() 
+
+
+{
+theme_myOwn =  theme(panel.background = element_rect('#F5F5F5'),
+                     plot.background = element_rect('#F5F5F5'),
+                     panel.grid = element_blank(),
+                     axis.ticks.y = element_blank(),
+                     legend.position = 'none', 
+                     legend.background = element_blank(),
+                     plot.title.position = 'plot',
+                     plot.caption.position = 'plot',
+                     plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+                     plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+                     plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+                     axis.title = element_text(family = 'NanumGothic',color = "#525252"),
+                     axis.text = element_text(family = 'NanumGothic',color = "#525252"))
+}
+
+library(viridis)
+library(hrbrthemes)
+library(ggmap)
+mykey = "whatsup" # 본인의 API 키로 바꿔주세요.
+register_google(key = mykey)
+seoul = get_map("Seoul, South Korea", zoom = 12, maptype = "toner",  source='stamen')
+
+
+```
+
+
+```{r}
+# dataset = read.csv('/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/completeList2.csv') # BLIND.
+# http://www.index.go.kr/potal/stts/idxMain/selectPoSttsIdxSearch.do?idx_cd=4219&stts_cd=421901
+
+Sys.setlocale("LC_CTYPE", "ko_KR.UTF-8")
+
+companies = read.csv('/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/companyInfo.csv')
+sheet1 = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/jobMarket.xlsx", sheet = "시트1")
+sheet2 = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/jobMarket.xlsx", sheet = "시트2")
+sheet3 = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/jobMarket.xlsx", sheet = "시트3")
+employmentRate = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/employmentRate.xlsx", sheet = "시트2")
+averageWage = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/AverageWage.xlsx", sheet = "시트1") # this too.
+commute = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/commute_time.xlsx", sheet = "시트1") # this too.
+
+df = read.csv('/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/test5.csv', encoding = 'UTF-8')
+latlng = read_excel("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/longlat.xlsx", sheet = "시트1")
+
+latlng = latlng %>%
+  select(시도, 시군구, 읍면동, 위도, 경도) %>%
+  mutate(city = paste0(시도, ' ', 시군구, ' ', 읍면동))
+
+```
+
+
+```{r}
+
+p1 = employmentRate %>%
+  mutate(마감년월 = str_replace(월도, '월', '') %>% paste0(., '01') %>% lubridate::ymd(.)) %>%
+  mutate(just_year = as.character(lubridate::year(마감년월)),
+         plt_year = as.character(lubridate::year(마감년월)),
+         plt_year = case_when(plt_year == "2021" ~ "2021",
+                              plt_year == "2020" ~ "2020",
+                              TRUE ~ "2002 ~ 2019"),
+         month = as.numeric(lubridate::month(마감년월)),
+         month = factor(month, levels = c('1','2','3','4','5','6','7','8','9','10','11','12'))) %>%
+  ggplot(aes(x = month, y = `취업자수`, group = just_year, color = plt_year)) +
+  geom_line() +
+  geom_point(size = 2.0, shape = 22) +
+  scale_y_continuous(labels =  scales::comma, limits = c(0, 150000)) +
+  scale_color_manual(values = c("grey95", "black","darkorange1"), name = "") +
+  labs(x = NULL, y = NULL,
+       title = '연/월간 취업자수 인원',
+              subtitle = '(단위 : 명), \'02 ~ \'21년 ',
+       caption = 'Source : e-나라지표') +
+  theme_myOwn +
+  theme(axis.text = element_text(family = 'NanumGothic', face = 'bold.italic', color = "black"),
+        legend.position = 'bottom',
+        legend.text = element_text(family = 'NanumGothic', color = "black"),
+        legend.title = element_blank(),
+        plot.background = element_rect('grey80'),
+        panel.background = element_rect('grey80'),
+        legend.background = element_rect('grey80'),
+        legend.key = element_rect('grey80'))
+
+p2 = employmentRate %>%
+  mutate(마감년월 = str_replace(월도, '월', '') %>% paste0(., '01') %>% lubridate::ymd(.)) %>%
+  mutate(just_year = as.character(lubridate::year(마감년월)),
+         plt_year = as.character(lubridate::year(마감년월)),
+         plt_year = case_when(plt_year == "2021" ~ "2021",
+                              plt_year == "2020" ~ "2020",
+                              TRUE ~ "2002 ~ 2019"),
+         month = as.numeric(lubridate::month(마감년월)),
+         month = factor(month, levels = c('1','2','3','4','5','6','7','8','9','10','11','12'))) %>%
+  ggplot(aes(x = month, y = `구직`, group = just_year, color = plt_year)) +
+  geom_line() +
+  geom_point(size = 2.0, shape = 22) +
+  scale_y_continuous(labels =  scales::comma, limits = c(0, 550000)) +
+  scale_color_manual(values = c("grey95","black","darkorange1"), name = "") +
+  labs(x = NULL, y = NULL,
+       title = '연/월간 구직자수 인원',
+       subtitle = '(단위 : 명), \'02 ~ \'21년 ',
+       caption = 'Source : e-나라지표') +
+  theme_myOwn +
+  theme(axis.text = element_text(family = 'NanumGothic', face = 'bold.italic', color = "black"),
+        legend.position = 'bottom',
+        legend.text = element_text(family = 'NanumGothic', color = "black"),
+        legend.title = element_blank(),
+        plot.background = element_rect('grey80'),
+        panel.background = element_rect('grey80'),
+        legend.background = element_rect('grey80'),
+        legend.key = element_rect('grey80'))
+
+
+p1 + p2
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/1.employeed.png", width = 25, height = 12, units = "cm", dpi = 500)
+
+```
+
+그럼 회사들의 수요는 어느정도가 될까요?
+
+```{r}
+
+sheet1 %>%
+  mutate(just_year = as.character(lubridate::year(마감년월)),
+         plt_year = as.character(lubridate::year(마감년월)),
+         plt_year = case_when(plt_year == "2021" ~ "2021",
+                              plt_year == "2020" ~ "2020",
+                              TRUE ~ "Previous years"),
+         month = as.numeric(lubridate::month(마감년월)),
+         month = factor(month, levels = c('1','2','3','4','5','6','7','8','9','10','11','12'))) %>%
+  ggplot(aes(x = month, y = `구인인원(월)`, group = just_year, color = plt_year)) +
+  geom_line() +
+  geom_point(size = 2.0, shape = 22) +
+  geom_segment(aes(x = 3, y = 100000, xend = 3, yend = 300000), linetype = 'dotted', color = 'black') +
+  annotate("text",x = 4.5,y = 300000, size = 2.8, label = "\'20.01 코로나 유행", family = "NanumGothic", fontface = 2) +
+  annotate("text",x = 7.0,y = 50000, size = 3.5, label = "* 코로나 이후 구인 인원이 크게 축소되었지만, \n 빠르게 반등세로 돌아왔음.\n 이후 계속적인 상승세를 보이고 있음.", family = "NanumGothic", color = 'grey50', fontface = 2) +
+  scale_y_continuous(labels =  scales::comma, limits = c(0, 400000)) +
+  scale_color_manual(values = c("black","darkorange1","grey95"), name = "") +
+  labs(x = NULL, y = NULL,
+       title = '연/월간 구인 인원',
+       subtitle = '(단위 : 명), \'18 ~ \'21년 ',
+       caption = 'Source : e-나라지표') +
+  theme_myOwn +
+  theme(axis.text = element_text(family = 'NanumGothic', face = 'bold.italic', color = "black"),
+        legend.position = 'right',
+        legend.text = element_text(family = 'NanumGothic', color = "black"),
+        legend.title = element_blank(),
+        plot.background = element_rect('grey80'),
+        panel.background = element_rect('grey80'),
+        legend.background = element_rect('grey80'),
+        legend.key = element_rect('grey80'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/2.findingjobs.png", width = 20, height = 12, units = "cm", dpi = 500)
+
+```
+
+
+```{r}
+
+df = df %>%
+  select(-X) %>%
+  filter(가입자수 >= 50) %>%
+  transmute(`사업장명`,
+          `사업장업종코드`,
+          `가입자수`,
+          `당월고지금액`,
+          `신규취득자수`,
+          `상실가입자수`,
+          사업장지번상세주소,
+          법정동주소광역시도코드,
+            법정동주소광역시시군구코드,
+          Payment_percap = `당월고지금액`/`가입자수`,
+          Avg_monthly_pmt = (Payment_percap / 9) * 100,
+          Avg_annual_pmt = (Avg_monthly_pmt) * 12)
+
+```
+
+```{r}
+
+df2 = df %>%
+  select(-c(사업장명, Payment_percap, Avg_annual_pmt)) %>%
+  transmute(industry = as.numeric(substr(`사업장업종코드`,1,2)),
+            numCount = 가입자수,
+            Avg_monthly_pmt) %>%
+  mutate(industryKor = case_when( between(industry,1,3) ~ '농업/임업/어업',
+                                  between(industry,5,8) ~ '광업',
+                                  between(industry,10,34) ~ '제조업',
+                                  between(industry,35,36) ~ '전기/가스/증기/수도',
+                                  between(industry,37,39) ~ '폐기물처리/환경복원업',
+                                  between(industry,41,42) ~ '건설업',
+                                  between(industry,45,47) ~ '도매/소매업',
+                                  between(industry,49,52) ~ '운수업',
+                                  between(industry,55,56) ~ '숙박및음식점업',
+                                  between(industry,58,63) ~ '출판/영상/방송/정보서비스업',
+                                  
+                                  between(industry,64,66) ~ '금융서비스업',
+                                  between(industry,68,69) ~ '부동산/임대업',
+                                  between(industry,70,73) ~ '전문/고학력/기술서비스업',
+                                  between(industry,74,75) ~ '사업시설관리/지원서비스업',
+                                  
+                                  between(industry,84,84) ~ '공공행정/국방/사회보장',
+                                  between(industry,85,85) ~ '교육서비스업',
+                                  between(industry,86,87) ~ '보건업/사회복지서비스업',
+                                  between(industry,90,91) ~ '예술/스포츠/여가관련',
+                                  
+                                  between(industry,94,96) ~ '협회/단체/기타개인서비스',
+                                  between(industry,97,98) ~ '가구내고용/자가생산',
+                                  between(industry,99,99) ~ '국제/외국기관',
+                                  TRUE ~ 'error'))
+  
+````
+
+```{r}
+
+targetIndustry = df2 %>%
+  filter(industryKor != 'error') %>%
+  select(industryKor, Avg_monthly_pmt) %>%
+  group_by(industryKor) %>%
+  summarise(meanPmt = mean(Avg_monthly_pmt, na.rm = TRUE)*12,
+            n = n()) %>%
+  filter(n >= 10) %>% pull(industryKor)
+
+df2 %>%
+  filter(industryKor != 'error') %>%
+  transmute(industryKor, annual_income = Avg_monthly_pmt*12) %>%
+  filter(industryKor %in% targetIndustry) %>%
+  mutate(grp = as.factor(ifelse(industryKor == '금융서비스업', '금융업', '이외 산업'))) %>%
+  ggplot(aes(x = reorder(industryKor, annual_income), y = annual_income, group = industryKor, fill = grp)) +
+  geom_boxplot(outlier.color = 'grey30', outlier.alpha = 0.5, color = 'grey30') +
+  scale_y_continuous(label = comma, limits = c(00000000, 70000000)) +
+  scale_fill_manual(values=c("#E69F00", "#999999")) +
+  coord_flip() + 
+  labs(x = '', y = '', title = '업종별 추산연봉',
+       subtitle = '국민연금 데이터 역산으로 산출 (단위 : 원)',
+       caption = 'Source : data.go.kr') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size= 8),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "black", size = 9),
+        axis.ticks.y=element_blank(),
+        
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'none',
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.title.position = 'plot',
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252", size = 10),
+        plot.caption = element_text(size = 8, color = "#525252", face = "bold.italic", family = 'NanumGothic'),
+        legend.background = element_rect(fill = 'grey80', color = 'grey80'),
+        plot.margin = margin(t=1,r=2,b=0,l=2, unit = 'cm'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/3.WagebyIndustry.png", width = 20, height = 12, units = "cm", dpi = 500)
+
+```
+
+```{r}
+
+df2 %>%
+  filter(!(industryKor %in% c('error', '폐기물처리/환경복원업'))) %>%
+  group_by(industryKor) %>%
+  summarise(meanCount = mean(numCount, na.rm = TRUE),
+            n = n()) %>% filter(n >= 20) %>%
+  ggplot(aes(x = reorder(industryKor, meanCount), y = meanCount, fill = meanCount, group = 1)) +
+  geom_segment(aes(xend = reorder(industryKor, meanCount), yend = 0), linetype = 'dotted', color = 'grey60') + 
+  geom_hline(yintercept = mean(df2$numCount), linetype = 'dashed', color = 'grey70', alpha = 0.9) +
+  geom_line(stat = 'identity', alpha = 0.5, linetype = 'longdash') +
+  geom_point(stat = 'identity', size = 4, shape = 21) +
+#  annotate("text",x = 1.5, y = 300, size = 2.8, label = "평균 근무인원 228명", family = "NanumGothic", fontface = 2) +
+  scale_fill_continuous(type = "viridis") +
+  coord_polar(clip = 'off') +
+  theme_minimal() +
+  labs(x = '', y = '', title = '업종별 평균 근무인원 추산',
+       subtitle = '국민연금 가입 사업장 중 50명 이상 기업 (단위 : 명)',
+       caption = '평균 근무 인원은 228명. Source : data.go.kr') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_blank(),
+        axis.ticks.y=element_blank(),
+        
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'bottom', 
+        legend.key.size = unit(0.5, 'cm'),
+        legend.key.height = unit(0.2, 'cm'),
+        legend.key.width = unit(1.0, 'cm'),
+        legend.title = element_blank(),
+
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.title.position = 'panel',
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+        plot.caption.position = 'plot',
+        legend.background = element_rect(fill = 'grey80', color = 'grey80'),
+        plot.margin = margin(t=1,r=2,b=0,l=2, unit = 'cm'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/4.companySize.png", width = 18, height = 18, units = "cm", dpi = 500)
+
+```
+
+
+```{r}
+
+plt = df %>%
+  filter(법정동주소광역시도코드 %in% c(11)) %>%
+  separate(사업장지번상세주소, c('city','town','dong'), ' ') %>%
+  transmute(geocode = as.factor(paste0(city,' ',town, ' ', dong)),
+            사업장업종코드,
+            가입자수,
+            당월고지금액,
+            Payment_percap = `당월고지금액`/`가입자수`,
+            Avg_monthly_pmt = (Payment_percap / 9) * 100,
+            Avg_annual_pmt = (Avg_monthly_pmt) * 12) %>%
+  group_by(geocode) %>%
+  summarise(sumCnt = sum(가입자수),
+            meanPmt = mean(Avg_monthly_pmt, na.rm = TRUE)) %>%
+  left_join(latlng %>%
+              rename(geocode = city,
+                     longitude = 위도,
+                     latitude = 경도) %>%
+              select(geocode, longitude, latitude), by = 'geocode')
+
+```
+
+
+```{r}
+
+ggmap(seoul, darken = 0.5, extent = "device") +
+  geom_point(plt, mapping = aes(x = latitude, y = longitude, color = sumCnt, alpha = 0.1, size = sumCnt)) +
+  scale_size(range = c(.1, 20), name="unstated", guide = 'none') +
+  scale_alpha(guide = 'none') +
+  scale_colour_continuous(labels=comma, type = 'viridis') +
+  labs(x = '', y = '', title = '어느 지역에 내 자리가 가장 많을까?',
+      subtitle = '국민연금 데이터를 통해 추산한 서울권 평균 근무인원 (단위 : 명)',
+      caption = 'Source : data.go.kr') +
+  theme(panel.grid = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = 'bottom',
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 14),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        legend.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        legend.title = element_blank(),
+        legend.key.size = unit(0.5, 'cm'),
+        legend.key.height = unit(0.2, 'cm'),
+        legend.key.width = unit(1.2, 'cm'),
+        plot.margin = margin(t=1,r=2,b=0,l=2, unit = 'cm'))
+
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/5.Seoulmap.png", width = 18, height = 18, units = "cm", dpi = 500)
+
+# https://blog.naver.com/PostView.naver?blogId=kiakass&logNo=222449339999&from=search&redirect=Log&widgetTypeCall=true&directAccess=false
+
+```
+
+```{r}
+
+ggmap(seoul, darken = 0.5, extent = "device") +
+  geom_point(plt, mapping = aes(x = latitude, y = longitude, color = meanPmt/10000, alpha = 0.5, size = meanPmt/10000)) +
+  scale_size(range = c(.1, 6), name="unstated", guide = 'none') +
+  scale_alpha(guide = 'none') +
+  scale_colour_continuous(labels=comma, type = 'viridis') +
+  labs(x = '', y = '', title = '어느 지역이 월급이 높을까?',
+      subtitle = '국민연금 데이터를 통해 추산한 서울권 평균 월급',
+      caption = 'Source : data.go.kr',
+      color='(단위 : 만원)') +
+  theme(panel.grid = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = 'bottom',
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 14),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        legend.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        legend.title = element_text(size = 7 ,vjust = 0.9),
+        legend.key.size = unit(0.5, 'cm'),
+        legend.key.height = unit(0.2, 'cm'),
+        legend.key.width = unit(1.2, 'cm'),
+        plot.margin = margin(t=1,r=2,b=0,l=2, unit = 'cm'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/6.Seoulmap_money.png", width = 18, height = 18, units = "cm", dpi = 500)
+
+# https://blog.naver.com/PostView.naver?blogId=kiakass&logNo=222449339999&from=search&redirect=Log&widgetTypeCall=true&directAccess=false
+
+```
+
+
+```{r}
+
+plt %>%
+  separate(geocode, c('city','town','dong'), ' ') %>%
+  transmute(geocode = as.factor(town),
+            latitude,
+            longitude,
+            meanPmt) %>%
+  left_join(commute %>% rename(geocode = 위치), by = 'geocode') %>%
+  select(geocode, 평균소요시간) %>%
+  distinct() %>%
+  mutate(geocode = as.factor(geocode)) %>%
+  arrange(desc(평균소요시간)) %>%
+  top_n(9) %>%
+  mutate(grp = as.factor(case_when((geocode == '영등포구') ~ '영등포구',
+                                   (geocode == '양천구') ~ '양천구',
+                                   TRUE ~ '이외 지역'))) %>%
+  ggplot(aes(x = reorder(geocode,`평균소요시간`), y = `평균소요시간`, fill = grp, group = grp)) +
+#  geom_segment(aes(xend = reorder(geocode,`평균소요시간`), yend = 00), linetype = 'solid', color = 'viridis') +
+  geom_bar(aes(x = reorder(geocode,`평균소요시간`), y = 평균소요시간), width = 0.5, stat = 'identity') +
+  geom_segment(aes(xend = reorder(geocode,`평균소요시간`), yend = 60), linetype = 'dotted', color = 'grey65') +
+  geom_point(stat = 'identity', size = 3, shape = 21, fill = 'grey') +
+  geom_text(aes(label = `평균소요시간`), stat = "identity", hjust = 1.7, size = 2.2) +
+  scale_y_continuous(limits = c(00, 60)) +
+  scale_fill_manual(values=c("#E69F00","#E69F00", "#999999")) +
+  geom_vline(xintercept = 9, color = 'grey50', linetype = 'longdash') +
+  coord_polar(clip = 'off', theta = 'y') +
+  # annotate("text", x = 12.9, y = 55.5, size = 3.0, label = "영등포 기준 평균 38.2 분 \n 가장 긴 양천구는 41분 소요됩니다.", family = 'NanumGothic', fontface = 2, color = 'black') +
+  theme_minimal() +
+  labs(x = '', y = '', title = '평균 출퇴근 시간',
+       subtitle = '가장 오래 걸리는 지역 (단위 : 분) \n\n
+       "가장 중요하면서도 고려를 잘 안하는 출퇴근시간.. \n지하철에서 버려지는 시간은 무려 하루 평균 1시간 반!"',
+       caption = 'Source : data.go.kr') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9, face = 'bold'),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'bottom', 
+        legend.key.size = unit(0.5, 'cm'),
+        legend.key.height = unit(0.2, 'cm'),
+        legend.key.width = unit(0.7, 'cm'),
+        legend.title = element_blank(),
+        legend.text = element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252",margin=margin(0,0,20,0)),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+        legend.background = element_rect(fill = 'grey80', color = 'grey80'),
+        plot.margin = margin(t=0.5,r=2,b=0,l=2, unit = 'cm'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/7.commute.png", width = 18, height = 18, units = "cm", dpi = 500)
+
+```
+
+
+```{r}
+
+plt %>%
+  separate(geocode, c('city','town','dong'), ' ') %>%
+  transmute(geocode = as.factor(town),
+            latitude,
+            longitude,
+            meanPmt) %>%
+  left_join(commute %>% rename(geocode = 위치), by = 'geocode') %>%
+  select(geocode, 평균소요시간) %>%
+  distinct() %>%
+  mutate(geocode = as.factor(geocode)) %>%
+  arrange(desc(평균소요시간)) %>%
+  top_n(-9) %>%
+  mutate(grp = as.factor(case_when((geocode == '중구') ~ '중구',
+                                   TRUE ~ '이외 지역'))) %>%
+  ggplot(aes(x = reorder(geocode,-`평균소요시간`), y = `평균소요시간`, fill = grp, group = grp)) +
+#  geom_segment(aes(xend = reorder(geocode,`평균소요시간`), yend = 00), linetype = 'solid', color = 'viridis') +
+  geom_bar(aes(x = reorder(geocode,`평균소요시간`), y = 평균소요시간), width = 0.5, stat = 'identity') +
+  geom_segment(aes(xend = reorder(geocode,`평균소요시간`), yend = 60), linetype = 'dotted', color = 'grey65') +
+  geom_point(stat = 'identity', size = 3, shape = 21, fill = 'grey') +
+  geom_text(aes(label = `평균소요시간`), stat = "identity", hjust = 1.7, size = 2.2) +
+  scale_y_continuous(limits = c(00, 60)) +
+  scale_fill_manual(values=c("#999999","#E69F00")) +
+  geom_vline(xintercept = 9, color = 'grey50', linetype = 'longdash') +
+  coord_polar(clip = 'off', theta = 'y') +
+  # annotate("text", x = 8.9, y = 48.5, size = 3.0, label = "영등포 기준 평균 38.2 분 \n 가장 긴 양천구는 41분 소요됩니다.", family = 'NanumGothic', fontface = 2, color = 'black') +
+  theme_minimal() +
+  labs(x = '', y = '', title = '평균 출퇴근 시간',
+       subtitle = '가장 덜 걸리는 지역 (단위 : 분)',
+       caption = 'Source : data.go.kr') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9, face = 'bold'),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'bottom', 
+        legend.key.size = unit(0.5, 'cm'),
+        legend.key.height = unit(0.2, 'cm'),
+        legend.key.width = unit(0.7, 'cm'),
+        legend.title = element_blank(),
+        legend.text = element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252",margin=margin(0,0,0,0)),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"),
+        legend.background = element_rect(fill = 'grey80', color = 'grey80'),
+        plot.margin = margin(t=0,r=2,b=0,l=2, unit = 'cm'))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/8.commute_less.png", width = 18, height = 18, units = "cm", dpi = 500)
+
+```
+
+```{r}
+
+df3 = df %>%
+  filter(!is.na(사업장업종코드)) %>%
+  filter(nchar(사업장업종코드) == 6) %>%
+  transmute(industry = substr(사업장업종코드,1,2),
+            가입자수,
+            신규취득자수,
+            상실가입자수,
+            당월고지금액,
+            Payment_percap = `당월고지금액`/`가입자수`,
+            Avg_monthly_pmt = (Payment_percap / 9) * 100,
+            Avg_annual_pmt = (Avg_monthly_pmt) * 12) %>%
+  mutate(person_in = 신규취득자수/가입자수,
+         person_out = 상실가입자수/가입자수) %>% # 신규취득자수/가입자수  +  상실가입자수/신규취득자수
+  mutate(industryKor = case_when( between(industry,1,3) ~ '농업/임업/어업',
+                                  between(industry,5,8) ~ '광업',
+                                  between(industry,10,34) ~ '제조업',
+                                  between(industry,35,36) ~ '전기/가스/증기/수도',
+                                  between(industry,37,39) ~ '폐기물처리/환경복원업',
+                                  between(industry,41,42) ~ '건설업',
+                                  between(industry,45,47) ~ '도매/소매업',
+                                  between(industry,49,52) ~ '운수업',
+                                  between(industry,55,56) ~ '숙박및음식점업',
+                                  between(industry,58,63) ~ '출판/영상/방송/정보서비스업',
+                                  
+                                  between(industry,64,66) ~ '금융서비스업',
+                                  between(industry,68,69) ~ '부동산/임대업',
+                                  between(industry,70,73) ~ '전문/고학력/기술서비스업',
+                                  between(industry,74,75) ~ '사업시설관리/지원서비스업',
+                                  
+                                  between(industry,84,84) ~ '공공행정/국방/사회보장',
+                                  between(industry,85,85) ~ '교육서비스업',
+                                  between(industry,86,87) ~ '보건업/사회복지서비스업',
+                                  between(industry,90,91) ~ '예술/스포츠/여가관련',
+                                  
+                                  between(industry,94,96) ~ '협회/단체/기타개인서비스',
+                                  between(industry,97,98) ~ '가구내고용/자가생산',
+                                  between(industry,99,99) ~ '국제/외국기관',
+                                  TRUE ~ 'error'))
+
+df3 %>%
+  select(industryKor, person_in, person_out) %>%
+  filter(industryKor != 'error') %>%
+  mutate(person_out = person_out * -1) %>%
+  group_by(industryKor) %>%
+  summarise(mean_in = mean(person_in)*100,
+            mean_out = mean(person_out)*100) %>%
+  ggplot(aes(x = industryKor)) +
+  geom_hline(yintercept = 0, linetype = 'dotted') +
+  geom_segment(aes(x = industryKor, xend = industryKor, y = -10, yend = 15), linetype = 'dotted', size = 0.5, alpha = 0.5, color = 'grey40') +
+  geom_segment(aes(x = industryKor, xend = industryKor, y = 0, yend = mean_in), linetype = 'solid', size = 1.25, color = 'grey40') +
+  geom_segment(aes(x = industryKor, xend = industryKor, y = 0, yend = mean_out), linetype = 'solid',size = 1.25, color = 'grey40') +
+  geom_point(aes(y = mean_in),size = 3, shape = 21, fill = '#73D055FF') +
+  geom_point(aes(y = mean_out), size = 3, shape = 21, fill = '#404788FF') +
+  annotate("text", x = 3, y = 10, size = 2.8, label = "도소매업에서의 입사율이 높은 것은,\n아르바이트의 존재 때문일까요?", family = "NanumGothic") +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = '', y = '', title = '산업군별 입사율 및 퇴사율',
+       subtitle = '(단위 : %)',
+       caption = 'Source : data.go.kr',
+       color = '') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'right', 
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/9.inandout.png", width = 25, height = 15, units = "cm", dpi = 500)
+
+```
+
+```{r}
+
+# 좋은 기업의 기준?
+# 1. 매출액 10억이상
+# 2. 인원증가율 10% 이상.
+
+df %>%
+  filter(가입자수 >= 300) %>%
+  filter(!is.na(사업장업종코드)) %>%
+  filter(nchar(사업장업종코드) == 6) %>%
+  transmute(industry = substr(사업장업종코드,1,2),
+            사업장명,
+            가입자수,
+            신규취득자수,
+            상실가입자수,
+            당월고지금액,
+            Payment_percap = `당월고지금액`/`가입자수`,
+            Avg_monthly_pmt = (Payment_percap / 9) * 100,
+            Avg_annual_pmt = (Avg_monthly_pmt) * 12) %>%
+  mutate(inOutRate = (신규취득자수-상실가입자수)/(가입자수)) %>%
+  mutate(사업장명 = str_replace_all(사업장명,'주식회사','')) %>%
+  mutate(사업장명 = str_replace_all(사업장명,'[(주)]','')) %>%
+  filter(between(inOutRate, 0.1, 0.2))
+
+
+```
+
+```{r}
+
+df = read.csv('/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/test5.csv', encoding = 'UTF-8')
+
+t0bins <- seq(0, 62880000, by = 2500000)
+
+df %>%
+  mutate( Payment_percap = `당월고지금액`/`가입자수`,
+          Avg_monthly_pmt = (Payment_percap / 9) * 100,
+          Avg_annual_pmt = (Avg_monthly_pmt) * 12) %>%
+  filter(!is.na(Avg_annual_pmt)) %>% 
+  mutate(bins=cut(Avg_annual_pmt, breaks=t0bins)) %>%
+  ggplot(aes(x = Avg_annual_pmt, group = bins, fill = bins)) +
+  geom_histogram(color = 'grey', bins = 200) +
+  scale_fill_viridis(discrete = T) +
+  geom_curve(aes(x = 50000000, y = 4000, xend = 59000000, yend = 1000), size = 0.25,
+            arrow = arrow(length = unit(0.03, "npc")), curvature = 0.2, linetype = 'longdash') +
+  annotate("text", x = 50000000, y = 4500, size = 2.8, label = "납부액상한이 있다보니, \n 6천만원이 넘어가는 부분에서의 정확한 \n 연봉계산은 어렵습니다.", family = "NanumGothic") +
+  scale_x_continuous(labels =  scales::comma) +
+  scale_y_continuous(labels =  scales::comma) +
+  theme_minimal() +
+  labs(x = '', y = '', title = '전체 사업체 평균 연봉',
+       subtitle = '(단위 : 원)',
+       caption = 'Source : data.go.kr',
+       color = '') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'none', 
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252", margin=margin(0,0,20,0)),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+
+
+  
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/10.wholeWage.png", width = 25, height = 15, units = "cm", dpi = 500)
+
+```
+
+```{r}
+
+
+
+```
+
+```{r}
+
+clf = c('199만원 이하','200~299만원', '300~399만원', '400~599만원', '600만원 이상')
+scr = c(4.1, 4.09, 4.33, 4.62, 4.6)
+
+df_temp = cbind(clf, scr) %>% as.data.frame()  
+
+
+int_breaks <- function(x, n = 5) {
+  l <- pretty(x, n)
+  l[abs(l %% 1) < .Machine$double.eps ^ 0.5]
+}
+
+df_temp %>%
+  mutate(scr = as.numeric(scr)) %>%
+  ggplot(aes(x = clf, y = scr)) +
+  geom_segment(aes(x = clf, xend = clf, y = 3, yend = scr),linetype = 'dotted', color = 'brown')  +
+  geom_segment(aes(x = clf, xend = clf, y = 5, yend = scr),linetype = 'dashed', color = 'brown', alpha = 0.6)  +
+  geom_point(size = 15, shape = 21, fill = 'cornsilk2') +
+  geom_text(aes(label = as.character(scr)), vjust = 0.5, hjust = 0.5, size = 3, color = 'black') +
+  geom_curve(aes(x = 3, y = 3.7, xend = 3.9, yend = 4.5), size = 0.25,
+          arrow = arrow(length = unit(0.03, "npc")), curvature = -0.2, linetype = 'solid') +
+  annotate("text", x = 2.7, y = 3.5, size = 3.0, label = "급여가 높을 수록 직무 만족도는 소폭 상승해요.", family = 'NanumGothic', fontface = 2, color = 'black') +
+  scale_y_continuous(limits = c(3,5), breaks = int_breaks) +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = '', y = '', title = '급여별 근무 만족도 결과',
+       subtitle = '(단위 : 점)',
+       caption = 'Source : Gallup Korea',
+       color = '') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'none', 
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252", margin=margin(0,0,20,0)),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+
+    
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/12.Lasttwo.png", width = 25, height = 15, units = "cm", dpi = 500)
+
+
+```
+
+```{r}
+
+
+
+
+df %>%
+  mutate(사업장명 = str_replace_all(사업장명,'주식회사','')) %>%
+  mutate(사업장명 = str_replace_all(사업장명,'[(주)]','')) %>%
+  left_join(companies %>%
+              filter(매출액 >= 100000) %>%
+              rename(사업장명 = 종목명), by = '사업장명') %>% filter(!is.na(기준)) %>%
+  filter(매출액 >= 100000) %>%
+  mutate(Payment_percap = `당월고지금액`/`가입자수`,
+         Avg_monthly_pmt = (Payment_percap / 9) * 100,
+         Avg_annual_pmt = (Avg_monthly_pmt) * 12, 
+         inOutRate = (신규취득자수-상실가입자수)/(가입자수)*100) %>%
+  filter(between(inOutRate,0,100)) %>%
+  transmute(사업장명, Avg_annual_pmt = log1p(Avg_annual_pmt), inOutRate, 매출액 = log1p(매출액)) %>%
+  arrange(desc(Avg_annual_pmt)) %>%
+  filter(inOutRate != 0) %>%
+  ggplot(aes(x = 매출액, y = Avg_annual_pmt, color = inOutRate, size = inOutRate)) +
+  geom_smooth(color = 'black', alpha = 0.5, method = 'lm') +
+  geom_point(alpha = 0.7) +
+  geom_text(aes(label = 사업장명), vjust = 3.0, size = 2) +
+  scale_size(range = c(0,10), guide = 'none') +
+  scale_x_continuous(labels =  scales::comma) +
+  scale_y_continuous(labels =  scales::comma, limits = c(16.75, 18)) +
+  annotate("text",x = 16.0, y = 17.3, size = 2.8, color = 'grey20', label = "인원 증가율이 클 수록 원이 커집니다.", family = "NanumGothic", fontface = 2) +
+  theme_minimal() +
+  labs(x = '매출액', y = '연봉', title = '매출액과 연봉, 인원증가율의 상관관계',
+       subtitle = '(단위 : Log/원)',
+       caption = 'Source : data.go.kr',
+       color = '인원 증가율 (%)') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'bottom',
+        legend.title = element_text(family = 'NanumGothic',color = "#525252", face = 'bold', vjust = 0.75),
+        legend.box.margin = margin(0,1,0,1),
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252", margin=margin(0,0,20,0)),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/11.Lastone.png", width = 25, height = 17, units = "cm", dpi = 500)
+
+
+
+```
+
+```{r}
+
+
+# https://kosis.kr/statisticsList/statisticsListIndex.do?parentId=P1.1&vwcd=MT_ZTITLE&menuId=M_01_01#content-group # sw 기술자 직종별임금
+# 소프트웨어사업을 영위하는 기업체에서 근무하는 소프트웨어기술자의 실지급임금을 조사하여, 소프트웨어사업 수행 시 투입기술자의 평균임금으로 적용할 수 있도록 제공하며, 소프트웨어사업에 종사하는 소프트웨어기술인력의 임금동향 파악
+
+sw_wage = read.csv('/Users/jungwonwoo/Desktop/addition/SW_AverageWage_20220126004628.csv', fileEncoding = "euc-kr")
+
+meanWage = sw_wage %>%
+  rename(Wage = `X2019`) %>%
+  mutate(grp = as.factor(ifelse(직무별 == '데이터분석가', 1, 0)),
+         Wage = round((Wage * 20.9)*1.05/10000),0) %>% pull(Wage) %>% mean()
+
+sw_wage %>%
+  rename(Wage = `X2019`) %>%
+  mutate(grp = as.factor(ifelse(직무별 == '데이터분석가', 1, 0)),
+         Wage = round((Wage * 20.9)*1.05/10000),0) %>%
+  ggplot(aes(x = reorder(직무별,Wage), y = Wage, group = grp, fill = grp)) +
+  geom_segment(aes(xend =  reorder(직무별,Wage), yend = 350),linetype = 'dashed', color = 'grey75', alpha = 0.9)  +
+  geom_segment(aes(xend =  reorder(직무별,Wage), yend = 1300),linetype = 'dashed', color = 'grey75', alpha = 0.9)  +
+  geom_point(size = 7, shape = 22, color = 'grey80') +
+  geom_label_repel(aes(label = 직무별), box.padding = 0.5, max.overlaps = 28, size = 3,min.segment.length = 0.5, segment.linetype = 5, segment.curvature = -1e-20, segment.alpha = 0.2) +
+  geom_text(aes(label = Wage), size = 2, vjust = 0.5, hjust = 0.5, color = 'white') +
+  scale_fill_manual(values=c("#999999", "#E69F00")) +
+  scale_y_continuous(labels =  scales::comma, limits = c(250, 1300)) +
+  theme_minimal() +
+  labs(x = '', y = '', title = 'SW관련 산업종사자 평균임금 ',
+       subtitle = '(단위 : 월, 만원)',
+       caption = 'Source : data.go.kr',
+       color = '인원 증가율 (%)') +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'none',
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+ 
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/13.SW_Wage.png", width = 25, height = 17, units = "cm", dpi = 500)
+
+```
+
+
+```{r}
+
+
+# https://gsis.kwdi.re.kr/statHtml/statHtml.do?orgId=338&tblId=DT_1XD7002 # 청년층 이직 관련
+# https://kosis.kr/statisticsList/statisticsListIndex.do?parentId=D.1&vwcd=MT_ZTITLE&menuId=M_01_01#content-group # 첫직장 근속기간
+
+jobFlow  = read.csv('/Users/jungwonwoo/Desktop/addition/Curs_Job_inflow.csv', fileEncoding = "euc-kr", header = TRUE)
+
+
+jobFlow %>%
+  t() %>%
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  .[-c(1:3),] %>%
+  rename(time = rowname,
+         clc = V1,
+         total = V2,
+         hs_grad = V3,
+         col_grad = V4) %>%
+  mutate(time = case_when(str_detect(time, 'X2019..05') ~ '20190501',
+                          str_detect(time, 'X2020..05') ~ '20200501',
+                          str_detect(time, 'X2021..05') ~ '20210501',
+                          TRUE ~ 'error')) %>%
+  mutate(time = lubridate::ymd(time),
+         time = as.factor(lubridate::year(time))) %>%
+  transmute(time, clc, total = as.numeric(total)) %>%
+  filter(clc != '졸업/중퇴 후 취업 유경험자',
+         clc != '그 외') %>%
+  ggplot(aes(x = reorder(clc, -total), y = total, fill = time)) +
+  geom_bar(stat="identity",
+           position=position_dodge(),
+           alpha = 0.4,
+           width = 0.4) +
+  annotate("rect", xmin = 1.5, xmax = 2.5, ymin = 600, ymax = 900, alpha = .2) +
+  annotate("rect", xmin = 0.5, xmax = 1.5, ymin = 1000, ymax = 1300, alpha = .2) +
+  annotate("text", x = 3.5, y = 1000, size = 3.0, label = "여전히 대부분의 취업 경로는 \n 공개시험 및 인터넷을 통한 구직으로 보이지만,\n추천에 의한 입사 또한 적지 않습니다.", family = 'NanumGothic', fontface = 2, color = 'grey40') +
+  scale_fill_brewer(palette = "BuPu") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = '', y = '', title = '취업 경로 조사',
+       subtitle = '(단위 : 명)',
+       caption = 'Source : data.go.kr',
+       color = '인원 증가율 (%)') +
+  theme(axis.title.x=element_text(family = 'NanumGothic',color = "#525252"),
+        axis.text.x=element_text(family = 'NanumGothic',color = "#525252", size = 9),
+        axis.ticks.x=element_blank(),
+        axis.text.y =element_text(family = 'NanumGothic',color = "#525252", face = 'bold'),
+        axis.ticks.y=element_blank(),
+        panel.background = element_rect(color = 'grey80', fill = 'grey80'),
+        plot.background = element_rect(color = 'grey80', fill = 'grey80'),
+        panel.grid = element_blank(),
+        legend.position = 'bottom',
+        legend.title = element_blank(),
+        plot.title = element_text(family = 'NanumGothic',face = 'bold', size = 20),
+        plot.subtitle = element_text(family = 'NanumGothic', color = "#525252"),
+        plot.caption = ggtext::element_markdown(family = 'NanumGothic', size = 8, color = "#525252"))
+ 
+ggsave("/Users/jungwonwoo/Desktop/program_file/6.Dacon/Job_care/visual2/15.InRoute.png", width = 25, height = 17, units = "cm", dpi = 500)
+
+   
+
+```
+
+
