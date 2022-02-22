@@ -1,4 +1,4 @@
 # ColabDrive
-ultimate destination where January's code dwells.
-Each colab-based notebook has its own self-explanatory name.
-You can explore what's inside and leave a comment on it too 😊
+
+공개 가능한 일부 코드에 대한 리포지토리입니다 😊
+
